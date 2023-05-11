@@ -1,31 +1,33 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-##@Version           :  202305031641-git
+##@Version           :  202305111740-git
 # @@Author           :  Jason Hempstead
 # @@Contact          :  jason@casjaysdev.com
-# @@License          :  WTFPL
+# @@License          :  LICENSE.md
 # @@ReadME           :  install.sh --help
 # @@Copyright        :  Copyright: (c) 2023 Jason Hempstead, Casjays Developments
-# @@Created          :  Wednesday, May 03, 2023 16:41 EDT
+# @@Created          :  Thursday, May 11, 2023 17:40 EDT
 # @@File             :  install.sh
 # @@Description      :  Container installer script for it-tools
 # @@Changelog        :  New script
 # @@TODO             :  Completely rewrite/refactor/variable cleanup
-# @@Other            :  
-# @@Resource         :  
+# @@Other            :
+# @@Resource         :
 # @@Terminal App     :  no
 # @@sudo/root        :  no
 # @@Template         :  installers/dockermgr
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # shell check options
-# shellcheck disable=SC2317
+# shellcheck disable=SC2016
+# shellcheck disable=SC2031
 # shellcheck disable=SC2120
 # shellcheck disable=SC2155
 # shellcheck disable=SC2199
+# shellcheck disable=SC2317
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 APPNAME="it-tools"
-VERSION="202305031641-git"
+VERSION="202305111740-git"
 REPO_BRANCH="${GIT_REPO_BRANCH:-main}"
 HOME="${USER_HOME:-$HOME}"
 USER="${SUDO_USER:-$USER}"
@@ -93,8 +95,9 @@ __sudo_exec() { [ "$DOCKERMGR_USER_CAN_SUDO" = "true" ] && sudo -HE "$@" || { [ 
 __remove_extra_spaces() { sed 's/\( \)*/\1/g;s|^ ||g'; }
 __port() { echo "$((50000 + $RANDOM % 1000))" | grep '^' || return 1; }
 __docker_check() { [ -n "$(type -p docker 2>/dev/null)" ] || return 1; }
-__password() { cat "/dev/urandom" | tr -dc '0-9a-zA-Z' | head -c${1:-16} && echo ""; }
 __docker_ps_all() { docker ps -a 2>&1 | grep ${1:-} "$CONTAINER_NAME" && return 0 || return 1; }
+__password() { head -n1000 -c 10000 "/dev/urandom" | tr -dc '0-9a-zA-Z' | head -c${1:-16} && echo ""; }
+__total_memory() { mem="$(free | grep -i 'mem: ' | awk -F ' ' '{print $2}')" && echo $((mem / 1000)); }
 __enable_ssl() { { [ "$SSL_ENABLED" = "yes" ] || [ "$SSL_ENABLED" = "true" ]; } && return 0 || return 1; }
 __docker_is_running() { ps aux 2>/dev/null | grep 'dockerd' | grep -v ' grep ' | grep -q '^' || return 1; }
 __ssl_certs() { [ -f "$HOST_SSL_CA" ] && [ -f "$HOST_SSL_CRT" ] && [ -f "$HOST_SSL_KEY" ] && return 0 || return 1; }
@@ -115,6 +118,7 @@ __is_private_ip() { grep -E '192\.168\.[0-255]\.[0-255]|10\.[0-255]\.[0-255]\.[0
 __docker_gateway_ip() { sudo docker network inspect -f '{{json .IPAM.Config}}' ${HOST_DOCKER_NETWORK:-bridge} 2>/dev/null | jq -r '.[].Gateway' | grep -Ev '^$|null' | head -n1 | grep '^' || return 1; }
 __docker_net_create() { __docker_net_ls | grep -q "$HOST_DOCKER_NETWORK" && return 0 || { docker network create -d bridge --attachable $HOST_DOCKER_NETWORK &>/dev/null && __docker_net_ls | grep -q "$HOST_DOCKER_NETWORK" && echo "$HOST_DOCKER_NETWORK" && return 0 || return 1; }; }
 __local_lan_ip() { __ifconfig $SET_LAN_DEV | grep -w 'inet' | awk -F ' ' '{print $2}' | __is_private_ip | head -n1 | grep '^' || ip address show $SET_LAN_DEV 2>&1 | grep 'inet ' | awk -F ' ' '{print $2}' | sed 's|/.*||g' | __is_private_ip | grep -v '^$' | head -n1 | grep '^' || echo "$CURRENT_IP_4" | grep '^' || return 1; }
+__my_default_lan_address() { __ifconfig $SET_LAN_DEV | grep -w 'inet' | awk -F ' ' '{print $2}' | head -n1 | grep '^' || ip address show $SET_LAN_DEV 2>&1 | grep 'inet ' | awk -F ' ' '{print $2}' | sed 's|/.*||g' | grep -v '^$' | head -n1 | grep '^' || echo "$CURRENT_IP_4" | grep '^' || return 1; }
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Ensure docker is installed and running
 __docker_check || __docker_init
@@ -284,7 +288,7 @@ CONTAINER_X11_SOCKET="/tmp/.X11-unix"
 CONTAINER_X11_XAUTH="/home/x11user/.Xauthority"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Set container hostname and domain - Default: [it-tools.$SET_HOST_FULL_NAME] [$SET_HOST_FULL_DOMAIN]
-CONTAINER_HOSTNAME=""
+CONTAINER_HOSTNAME="tools"
 CONTAINER_DOMAINNAME=""
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Set the network type - default is bridge - [bridge/host]
@@ -308,15 +312,18 @@ HOST_NGINX_SSL_ENABLED="yes"
 HOST_NGINX_HTTP_PORT="80"
 HOST_NGINX_HTTPS_PORT="443"
 HOST_NGINX_UPDATE_CONF="yes"
+HOST_NGINX_EXTERNAL_DOMAIN=""
+HOST_NGINX_INTERNAL_DOMAIN="home"
+HOST_NGINX_INTERNAL_HOST="it-tools"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Enable this if container is running a webserver - [yes/no] [internalPort] [yes/no] [yes/no] [listen]
-CONTAINER_WEB_SERVER_ENABLED="no"
+CONTAINER_WEB_SERVER_ENABLED="yes"
 CONTAINER_WEB_SERVER_INT_PORT="80"
 CONTAINER_WEB_SERVER_SSL_ENABLED="no"
 CONTAINER_WEB_SERVER_AUTH_ENABLED="no"
 CONTAINER_WEB_SERVER_LISTEN_ON="127.0.0.10"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# Specify custom nginx vhosts - autoconfigure: [*./name.all/name.mydomain/name.myhostname] - [virtualhost,othervhostdom]
+# Specify custom nginx vhosts - autoconfigure: [name.all/name.*/name.mydomain/name.myhostname] - [virtualhost,othervhostdom]
 CONTAINER_WEB_SERVER_VHOSTS=""
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Add random portmapping - [port,otherport] or [proxy|/location|port]
@@ -352,7 +359,7 @@ CONTAINER_COUCHDB_ENABLED=""
 CONTAINER_POSTGRES_ENABLED=""
 CONTAINER_SUPABASE_ENABLED=""
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# Custom database setup - [yes/no] [mysql] [port/directory] [/data/db/$CONTAINER_CUSTOM_DATABASE_NAME] [msql]
+# Custom database setup - [yes/no] [db_name] [port] [/data/db/$CONTAINER_CUSTOM_DATABASE_NAME] [msql]
 CONTAINER_CUSTOM_DATABASE_ENABLED=""
 CONTAINER_CUSTOM_DATABASE_NAME=""
 CONTAINER_CUSTOM_DATABASE_PORT=""
@@ -405,13 +412,17 @@ CONTAINER_ENV+=""
 CONTAINER_SYSCTL=""
 CONTAINER_SYSCTL+=""
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Set custom capabilites - [NAME]
+DOCKER_CUSTOM_CAP=""
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Set capabilites - [yes/no]
-DOCKER_SYS_TIME="yes"
-DOCKER_SYS_ADMIN="yes"
-DOCKER_CAP_CHOWN="no"
+DOCKER_CAP_SYS_TIME="yes"
+DOCKER_CAP_SYS_ADMIN="yes"
+DOCKER_CAP_CHOWN="yes"
 DOCKER_CAP_NET_RAW="no"
 DOCKER_CAP_SYS_NICE="no"
 DOCKER_CAP_NET_ADMIN="no"
+DOCKER_CAP_SYS_MODULE="no"
 DOCKER_CAP_NET_BIND_SERVICE="no"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Define labels - [traefik.enable=true,label=label,otherlabel=label2]
@@ -440,9 +451,9 @@ POST_SHOW_FINISHED_MESSAGE=""
 # Run the script if it exists [yes/no]
 DOCKERMGR_ENABLE_INSTALL_SCRIPT="yes"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-# Set custom container enviroment variables - [--env MYVAR="VAR"]
+# Set custom container enviroment variables - [MYVAR="VAR"]
 __custom_docker_env() {
-  cat <<EOF | tee | sed 's|,| --env |g' | tr '\n' ' ' | __remove_extra_spaces
+  cat <<EOF | tee | grep -v '^$'
 
 EOF
 }
@@ -486,6 +497,8 @@ HOST_NGINX_SSL_ENABLED="\${ENV_HOST_NGINX_SSL_ENABLED:-$HOST_NGINX_SSL_ENABLED}"
 HOST_NGINX_HTTP_PORT="\${ENV_HOST_NGINX_HTTP_PORT:-$HOST_NGINX_HTTP_PORT}"
 HOST_NGINX_HTTPS_PORT="\${ENV_HOST_NGINX_HTTPS_PORT:-$HOST_NGINX_HTTPS_PORT}"
 HOST_NGINX_UPDATE_CONF="\${ENV_HOST_NGINX_UPDATE_CONF:-$HOST_NGINX_UPDATE_CONF}"
+HOST_NGINX_INTERNAL_HOST="\${ENV_HOST_NGINX_INTERNAL_HOST:-$HOST_NGINX_INTERNAL_HOST}"
+HOST_NGINX_INTERNAL_DOMAIN="\${ENV_HOST_NGINX_INTERNAL_DOMAIN:-$HOST_NGINX_INTERNAL_DOMAIN}"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CONTAINER_SSL_CA="${CONTAINER_SSL_CA:-}"
 CONTAINER_SSL_CRT="${CONTAINER_SSL_CRT:-}"
@@ -554,16 +567,12 @@ CONTAINER_CUSTOM_DATABASE_PORT="${CONTAINER_CUSTOM_DATABASE_PORT:-}"
 CONTAINER_CUSTOM_DATABASE_DIR="${CONTAINER_CUSTOM_DATABASE_DIR:-}"
 CONTAINER_CUSTOM_DATABASE_PROTOCOL="${CONTAINER_CUSTOM_DATABASE_PROTOCOL:-}"
 CONTAINER_DATABASE_USER_ROOT="${CONTAINER_DATABASE_USER_ROOT:-}"
-CONTAINER_DATABASE_PASS_ROOT="${CONTAINER_DATABASE_PASS_ROOT:-}"
 CONTAINER_DATABASE_LENGTH_ROOT="${CONTAINER_DATABASE_LENGTH_ROOT:-}"
 CONTAINER_DATABASE_USER_NORMAL="${CONTAINER_DATABASE_USER_NORMAL:-}"
-CONTAINER_DATABASE_PASS_NORMAL="${CONTAINER_DATABASE_PASS_NORMAL:-}"
 CONTAINER_DATABASE_LENGTH_NORMAL="${CONTAINER_DATABASE_LENGTH_NORMAL:-}"
 CONTAINER_USER_NAME="${CONTAINER_USER_NAME:-}"
-CONTAINER_USER_PASS="${CONTAINER_USER_PASS:-}"
 CONTAINER_PASS_LENGTH="${CONTAINER_PASS_LENGTH:-}"
 CONTAINER_ENV_USER_NAME="${CONTAINER_ENV_USER_NAME:-}"
-CONTAINER_ENV_PASS_NAME="${CONTAINER_ENV_PASS_NAME:-}"
 CONTAINER_SERVICES_LIST="${CONTAINER_SERVICES_LIST:-}"
 CONTAINER_MOUNT_DATA_ENABLED="${CONTAINER_MOUNT_DATA_ENABLED:-}"
 CONTAINER_MOUNT_DATA_MOUNT_DIR="${CONTAINER_MOUNT_DATA_MOUNT_DIR:-}"
@@ -593,14 +602,17 @@ __dockermgr_password_variables() {
   [ -d "$DOCKERMGR_CONFIG_DIR/secure" ] || mkdir -p "$DOCKERMGR_CONFIG_DIR/secure"
   cat <<EOF | tee | tr '|' '\n' | __remove_extra_spaces
 # Enviroment variables for $APPNAME
-ENV_CONTAINER_ENV_PASS_NAME="${ENV_CONTAINER_ENV_PASS_NAME:-$CONTAINER_ENV_PASS_NAME}"
-ENV_CONTAINER_DATABASE_PASS_ROOT="${ENV_CONTAINER_DATABASE_PASS_ROOT:-$CONTAINER_DATABASE_PASS_ROOT}"
-ENV_CONTAINER_DATABASE_PASS_NORMAL="${ENV_CONTAINER_DATABASE_PASS_NORMAL:-$CONTAINER_DATABASE_PASS_NORMAL}"
+CONTAINER_USER_PASS="${ENV_CONTAINER_USER_PASS:-$CONTAINER_USER_PASS}"
+CONTAINER_ENV_PASS_NAME="${ENV_CONTAINER_ENV_PASS_NAME:-$CONTAINER_ENV_PASS_NAME}"
+CONTAINER_DATABASE_PASS_ROOT="${ENV_CONTAINER_DATABASE_PASS_ROOT:-$CONTAINER_DATABASE_PASS_ROOT}"
+CONTAINER_DATABASE_PASS_NORMAL="${ENV_CONTAINER_DATABASE_PASS_NORMAL:-$CONTAINER_DATABASE_PASS_NORMAL}"
 
 EOF
 }
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Define extra functions
+__custom_docker_clean_env() { grep -Ev '^$|^#' | sed 's|^|--env |g' | grep '\--' | grep -v '\--env \\' | tr '\n' ' ' | __remove_extra_spaces; }
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 __rport() {
   local port=""
   port="$(__port)"
@@ -721,7 +733,7 @@ fi
 # rewrite variables from env file
 SET_LAN_DEV="${ENV_SET_LAN_DEV:-$SET_LAN_DEV}"
 SET_LAN_IP="${ENV_SET_LAN_IP:-$SET_LAN_IP}"
-SET_LAN_IP="${ENV_SET_LAN_IP:-$SET_LAN_IP}"
+SET_LOCAL_IP="$(__my_default_lan_address)"
 SET_DOCKER_IP="${ENV_SET_DOCKER_IP:-$SET_DOCKER_IP}"
 SET_LOCAL_HOSTNAME="${ENV_SET_LOCAL_HOSTNAME:-$SET_LOCAL_HOSTNAME}"
 SET_LONG_HOSTNAME="${ENV_SET_LONG_HOSTNAME:-$SET_LONG_HOSTNAME}"
@@ -753,6 +765,7 @@ HOST_NGINX_SSL_ENABLED="${ENV_HOST_NGINX_SSL_ENABLED:-$HOST_NGINX_SSL_ENABLED}"
 HOST_NGINX_HTTP_PORT="${ENV_HOST_NGINX_HTTP_PORT:-$HOST_NGINX_HTTP_PORT}"
 HOST_NGINX_HTTPS_PORT="${ENV_HOST_NGINX_HTTPS_PORT:-$HOST_NGINX_HTTPS_PORT}"
 HOST_NGINX_UPDATE_CONF="${ENV_HOST_NGINX_UPDATE_CONF:-$HOST_NGINX_UPDATE_CONF}"
+HOST_NGINX_INTERNAL_HOST="${HOST_NGINX_INTERNAL_HOST:-${CONTAINER_HOSTNAME:-$APPNAME}}"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CONTAINER_NAME="${ENV_CONTAINER_NAME:-${CONTAINER_NAME:-}}"
 CONTAINER_SSL_DIR="${ENV_CONTAINER_SSL_DIR:-$CONTAINER_SSL_DIR}"
@@ -845,6 +858,8 @@ CONTAINER_SSL_DIR="${CONTAINER_SSL_DIR:-/config/ssl}"
 CONTAINER_SSL_CA="${CONTAINER_SSL_CA:-$CONTAINER_SSL_DIR/ca.crt}"
 CONTAINER_SSL_CRT="${CONTAINER_SSL_CRT:-$CONTAINER_SSL_DIR/localhost.crt}"
 CONTAINER_SSL_KEY="${CONTAINER_SSL_KEY:-$CONTAINER_SSL_DIR/localhost.key}"
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+CONTAINER_DOMAINNAME="${HOST_NGINX_EXTERNAL_DOMAIN:-$CONTAINER_DOMAINNAME}"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Setup ssl certs
 if [ "$CONTAINER_WEB_SERVER_SSL_ENABLED" = "true" ]; then
@@ -1109,17 +1124,18 @@ fi
 DOCKER_CREATE_NET="$(__docker_net_create)"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Container listen address [address:extPort:intPort]
+HOST_DEFAULT_IP="${SET_LOCAL_IP:-$SET_LAN_IP}"
 HOST_LISTEN_ADDR="${HOST_LISTEN_ADDR:-$SET_LAN_IP}"
 if [ "$HOST_NETWORK_ADDR" = "yes" ] || [ "$HOST_NETWORK_ADDR" = "lan" ]; then
   HOST_DEFINE_LISTEN="$SET_LAN_IP"
   HOST_LISTEN_ADDR="$SET_LAN_IP"
-elif [ "$HOST_NETWORK_ADDR" = "public" ]; then
+elif [ "$HOST_NETWORK_ADDR" = "public" ] || [ "$HOST_NETWORK_ADDR" = "all" ]; then
   if connect_test && __test_public_reachable; then
     HOST_DEFINE_LISTEN="0.0.0.0"
     HOST_LISTEN_ADDR=$(__public_ip)
   else
-    HOST_DEFINE_LISTEN="$SET_LAN_IP"
-    HOST_LISTEN_ADDR="$SET_LAN_IP"
+    HOST_DEFINE_LISTEN="$HOST_DEFAULT_IP"
+    HOST_LISTEN_ADDR="$HOST_DEFAULT_IP"
   fi
 elif [ "$HOST_NETWORK_ADDR" = "docker" ]; then
   HOST_DEFINE_LISTEN="$SET_DOCKER_IP"
@@ -1130,7 +1146,7 @@ elif [ "$HOST_NETWORK_ADDR" = "local" ]; then
   CONTAINER_PRIVATE="yes"
 else
   HOST_DEFINE_LISTEN="0.0.0.0"
-  HOST_LISTEN_ADDR="$SET_LAN_IP"
+  HOST_LISTEN_ADDR="$HOST_DEFAULT_IP"
 fi
 HOST_DEFINE_LISTEN="${HOST_DEFINE_LISTEN:-0.0.0.0}"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1561,17 +1577,18 @@ if [ -n "$CONTAINER_OPT_ENV_VAR" ]; then
 fi
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # setup capabilites
-[ "$DOCKER_SYS_TIME" = "yes" ] && SET_CAPABILITIES+=("SYS_TIME")
-[ "$DOCKER_SYS_ADMIN" = "yes" ] && SET_CAPABILITIES+=("SYS_ADMIN")
-[ "$DOCKER_CAP_CHOWN" = "yes" ] && SET_CAPABILITIES+=("CAP_CHOWN")
-[ "$DOCKER_CAP_NET_RAW" = "yes" ] && SET_CAPABILITIES+=("CAP_NET_RAW")
-[ "$DOCKER_CAP_SYS_NICE" = "yes" ] && SET_CAPABILITIES+=("CAP_SYS_NICE")
-[ "$DOCKER_CAP_NET_ADMIN" = "yes" ] && SET_CAPABILITIES+=("CAP_NET_ADMIN")
-[ "$DOCKER_CAP_NET_BIND_SERVICE" = "yes" ] && SET_CAPABILITIES+=("CAP_NET_BIND_SERVICE")
+[ "$DOCKER_CAP_CHOWN" = "yes" ] && SET_CAPABILITIES+=("CHOWN")
+[ "$DOCKER_CAP_NET_RAW" = "yes" ] && SET_CAPABILITIES+=("NET_RAW")
+[ "$DOCKER_CAP_NET_ADMIN" = "yes" ] && SET_CAPABILITIES+=("NET_ADMIN")
+[ "$DOCKER_CAP_SYS_NICE" = "yes" ] && SET_CAPABILITIES+=("SYS_NICE")
+[ "$DOCKER_CAP_SYS_TIME" = "yes" ] && SET_CAPABILITIES+=("SYS_TIME")
+[ "$DOCKER_CAP_SYS_ADMIN" = "yes" ] && SET_CAPABILITIES+=("SYS_ADMIN")
+[ "$DOCKER_CAP_SYS_MODULE" = "yes" ] && SET_CAPABILITIES+=("SYS_MODULE")
+[ "$DOCKER_CAP_NET_BIND_SERVICE" = "yes" ] && SET_CAPABILITIES+=("NET_BIND_SERVICE")
 [ -n "${SET_CAPABILITIES[*]}" ] && CONTAINER_CAPABILITIES="${SET_CAPABILITIES[*]}"
 if [ -n "$CONTAINER_CAPABILITIES" ]; then
   DOCKER_SET_CAP=""
-  CONTAINER_CAPABILITIES="${CONTAINER_CAPABILITIES//,/ }"
+  CONTAINER_CAPABILITIES="${CONTAINER_CAPABILITIES//,/ } ${DOCKER_CUSTOM_CAP//,/ }"
   for cap in $CONTAINER_CAPABILITIES; do
     if [ "$cap" != "" ] && [ "$cap" != " " ]; then
       DOCKER_SET_CAP+="--cap-add $cap "
@@ -1586,7 +1603,7 @@ if [ -n "$CONTAINER_SYSCTL" ]; then
   CONTAINER_SYSCTL="${CONTAINER_SYSCTL//,/ }"
   for sysctl in $CONTAINER_SYSCTL; do
     if [ "$sysctl" != "" ] && [ "$sysctl" != " " ]; then
-      DOCKER_SET_SYSCTL+="--sysctl $sysctl "
+      DOCKER_SET_SYSCTL+="--sysctl \"$sysctl\" "
     fi
   done
   unset sysctl
@@ -1781,7 +1798,7 @@ if [ -n "$ENV_PORTS" ]; then
 fi
 unset DOCKER_SET_PORTS_ENV_TMP ENV_PORTS SET_PORTS_ENV_TMP
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-DOCKER_CUSTOM_ARRAY="$(__custom_docker_env | grep '\--')"
+DOCKER_CUSTOM_ARRAY="$(__custom_docker_env | __custom_docker_clean_env)"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Clean up variables
 DOCKER_SET_PUBLISH="$(printf '%s\n' "${DOCKER_SET_TMP_PUBLISH[@]}" | sort -Vu | tr '\n' ' ')" # ensure only one
@@ -1811,7 +1828,10 @@ __dockermgr_variables >"$DOCKERMGR_CONFIG_DIR/env/$APPNAME.conf"
 __dockermgr_password_variables >"$DOCKERMGR_CONFIG_DIR/secure/$APPNAME"
 chmod -f 600 "$DOCKERMGR_CONFIG_DIR/secure/$APPNAME"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-__custom_docker_env | tr ' ' '\n' | sed 's|^--.*||g' | grep -v '^$' >"$DOCKERMGR_CONFIG_DIR/env/$APPNAME.custom.conf"
+if [ ! -f "$DOCKERMGR_CONFIG_DIR/env/$APPNAME.custom.conf" ]; then
+  __custom_docker_env | sed 's|^--.* ||g' >"$DOCKERMGR_CONFIG_DIR/env/$APPNAME.custom.conf"
+  echo "" >>"$DOCKERMGR_CONFIG_DIR/env/$APPNAME.custom.conf"
+fi
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Main progam
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1955,7 +1975,7 @@ if [ -n "$EXECUTE_DOCKER_SCRIPT" ]; then
 fi
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Install nginx proxy
-NINGX_VHOSTS_WRITABLE="$(sudo -n true && sudo bash -c 'mkdir -p "$NGINX_DIR/vhosts.d";[ -w "$NGINX_DIR/vhosts.d" ] && echo "true" || false' || echo 'false')"
+NINGX_VHOSTS_WRITABLE="$(sudo -n true && NGINX_DIR="$NGINX_DIR" sudo bash -c 'mkdir -p "$NGINX_DIR/vhosts.d";[ -w "$NGINX_DIR/vhosts.d" ] && echo "true" || false' || echo 'false')"
 if [ "$NINGX_VHOSTS_WRITABLE" = "true" ]; then
   NGINX_VHOST_TMP_NAMES=()
   NGINX_VHOST_ENABLED="true"
@@ -1968,13 +1988,23 @@ if [ "$NINGX_VHOSTS_WRITABLE" = "true" ]; then
   if [ "$HOST_NGINX_UPDATE_CONF" = "yes" ] && [ -f "$INSTDIR/nginx/proxy.conf" ]; then
     for vhost in $NGINX_VHOST_SET_NAMES; do
       if [ -n "$vhost" ]; then
-        if echo "$vhost" | grep -q '^[.]*'; then
+        if echo "$vhost" | grep -qv '\.'; then # replace sub with name
+          vhost="${vhost//$CONTAINER_HOSTNAME/$vhost}"
+          NGINX_VHOST_TMP_NAMES+=("$vhost")
+        elif echo "$vhost" | grep -q '^.*[a-zA-Z0-9]\.\*$'; then # map to vhost.*
+          vhost="${vhost//.*/}"
+          NGINX_VHOST_TMP_NAMES+=("$vhost.*")
+        elif echo "$vhost" | grep -q '^\.\*$'; then
+          NGINX_VHOST_TMP_NAMES+=("${vhost:-$APPNAME}.*")
+        elif echo "$vhost" | grep -q "[.]all$"; then # map to vhost.*
+          vhost="${vhost//.all/}"
+          NGINX_VHOST_TMP_NAMES+=("${vhost:-$APPNAME}.*")
+        elif echo "$vhost" | grep -q '^[.]host$'; then # map to vhost.hostname
+          vhost="${vhost//.host/}"
           NGINX_VHOST_TMP_NAMES+=("*.$CONTAINER_HOSTNAME")
-        elif echo "$vhost" | grep -q "[.]all$"; then
-          NGINX_VHOST_TMP_NAMES+=("${vhost//.all/}.*")
-        elif echo "$vhost" | grep -q '[.]myhostname$'; then
-          NGINX_VHOST_TMP_NAMES+=("${vhost//.mydomain/}.$CONTAINER_HOSTNAME")
-        elif echo "$vhost" | grep -q '[.]mydomain$'; then
+        elif echo "$vhost" | grep -q '[.]myhostname$'; then # map to vhost.hostname
+          NGINX_VHOST_TMP_NAMES+=("${vhost//.myhostname/}.$CONTAINER_HOSTNAME")
+        elif echo "$vhost" | grep -q '[.]mydomain$'; then # map to vhost.domain or map to vhost.hostname
           NGINX_VHOST_TMP_NAMES+=("${vhost//.mydomain/}.${CONTAINER_DOMAINNAME:-$CONTAINER_HOSTNAME}")
         else
           NGINX_VHOST_TMP_NAMES+=("$vhost")
@@ -1989,6 +2019,7 @@ if [ "$NINGX_VHOSTS_WRITABLE" = "true" ]; then
       NGINX_VHOST_NAMES="${NGINX_VHOST_NAMES:-}"
     fi
     cp -f "$INSTDIR/nginx/proxy.conf" "$NGINX_VHOSTS_CONF_FILE_TMP"
+    [ -n "$NGINX_PROXY_URL" ] && [ -n "$NGINX_PORT" ] && NGINX_SET_PROXY_ADDRESS="$NGINX_PROXY_URL:$NGINX_PORT" || unset NGINX_SET_PROXY_ADDRESS
     sed -i "s|REPLACE_APPNAME|$APPNAME|g" "$NGINX_VHOSTS_CONF_FILE_TMP" &>/dev/null
     sed -i "s|REPLACE_NGINX_PORT|$NGINX_PORT|g" "$NGINX_VHOSTS_CONF_FILE_TMP" &>/dev/null
     sed -i "s|REPLACE_HOST_PROXY|$NGINX_PROXY_URL|g" "$NGINX_VHOSTS_CONF_FILE_TMP" &>/dev/null
@@ -2028,6 +2059,51 @@ if [ "$NINGX_VHOSTS_WRITABLE" = "true" ]; then
 fi
 { [ "$NGINX_VHOST_NAMES" = "" ] || [ "$NGINX_VHOST_NAMES" = " " ]; } && unset NGINX_VHOST_NAMES
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Setup an internal host
+if [ -n "$NGINX_SET_PROXY_ADDRESS" ] && [ -n "$HOST_NGINX_INTERNAL_DOMAIN" ]; then
+  HOST_NGINX_INTERNAL_DOMAIN="$HOST_NGINX_INTERNAL_HOST.$HOST_NGINX_INTERNAL_DOMAIN"
+  cat <<EOF | tee "$NGINX_VHOSTS_PROXY_FILE_TMP" &>/dev/null
+server {
+  listen                                    $HOST_NGINX_HTTP_PORT;
+  listen                                    [::]:$HOST_NGINX_HTTP_PORT;
+  server_name                               $HOST_NGINX_INTERNAL_DOMAIN;
+  access_log                                /var/log/nginx/access.$HOST_NGINX_INTERNAL_DOMAIN.log;
+  error_log                                 /var/log/nginx/error.$HOST_NGINX_INTERNAL_DOMAIN.log info;
+  keepalive_timeout                         75 75;
+  client_max_body_size                      0;
+  chunked_transfer_encoding                 on;
+  add_header Strict-Transport-Security      "max-age=7200";
+
+  include                                   /etc/nginx/global.d/nginx-defaults.conf;
+
+  location / {
+    proxy_pass                              http://$NGINX_SET_PROXY_ADDRESS;
+    proxy_http_version                      1.1;
+    proxy_connect_timeout                   3600;
+    proxy_send_timeout                      3600;
+    proxy_read_timeout                      3600;
+    proxy_buffering                         off;
+    proxy_request_buffering                 off;
+    proxy_set_header                        Host               \$http_host;
+    proxy_set_header                        X-Real-IP          \$remote_addr;
+    proxy_set_header                        X-Forwarded-For    \$proxy_add_x_forwarded_for;
+    proxy_set_header                        X-Forwarded-Proto  \$scheme;
+    send_timeout                            3600;
+  }
+}
+
+EOF
+  if [ -f "$NGINX_VHOSTS_INC_FILE_TMP" ]; then
+    if [ -f "/etc/nginx/nginx.conf" ]; then
+      __sudo_root mv -f "$NGINX_VHOSTS_INC_FILE_TMP" "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf"
+      systemctl status nginx 2>/dev/null | grep -q enabled &>/dev/null && __sudo_root systemctl reload nginx &>/dev/null
+    else
+      mv -f "$NGINX_VHOSTS_CONF_FILE_TMP" "$INSTDIR/nginx/$HOST_NGINX_INTERNAL_DOMAIN.conf" &>/dev/null
+    fi
+  fi
+  NGINX_VHOST_NAMES="$NGINX_VHOST_NAMES $HOST_NGINX_INTERNAL_DOMAIN"
+fi
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # finalize
 if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
   DOCKER_PORTS="$(__trim "${DOCKER_GET_PUBLISH//--publish/}")"
@@ -2035,22 +2111,17 @@ if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
   HOSTS_WRITABLE="$(sudo -n true && sudo bash -c '[ -w "/etc/hosts" ] && echo "true" || false' || echo 'false')"
   printf '# - - - - - - - - - - - - - - - - - - - - - - - - - -\n'
   if [ "$HOSTS_WRITABLE" = "true" ]; then
-    if [ "$HOST_LISTEN_ADDR" = 'home' ]; then
-      __printf_color "44" "Adding to /etc/hosts:                   $APPNAME.home $HOST_LISTEN_ADDR"
-      if ! grep -sq " $APPNAME.home" "/etc/hosts"; then
-        echo "$HOST_LISTEN_ADDR        $APPNAME.home" | sudo tee -a "/etc/hosts" &>/dev/null
+    if [ -n "$HOST_NGINX_INTERNAL_DOMAIN" ]; then
+      __printf_color "44" "Adding to /etc/hosts:                   $HOST_NGINX_INTERNAL_DOMAIN $HOST_LISTEN_ADDR"
+      if ! grep -sq " $HOST_NGINX_INTERNAL_DOMAIN" "/etc/hosts"; then
+        echo "$HOST_LISTEN_ADDR        $HOST_NGINX_INTERNAL_DOMAIN" | sudo tee -a "/etc/hosts" &>/dev/null
       fi
-    else
-      __printf_color "44" "Adding to /etc/hosts:                   $APPNAME.home $HOST_LISTEN_ADDR"
-      if ! grep -sq " $APPNAME.home" "/etc/hosts"; then
-        echo "$HOST_LISTEN_ADDR        $APPNAME.home" | sudo tee -a "/etc/hosts" &>/dev/null
-      fi
-      __printf_color "44" "Adding to /etc/hosts:                   $CONTAINER_HOSTNAME $HOST_LISTEN_ADDR"
-      if ! grep -sq " $CONTAINER_HOSTNAME" "/etc/hosts"; then
-        echo "$HOST_LISTEN_ADDR        $CONTAINER_HOSTNAME" | sudo tee -a "/etc/hosts" &>/dev/null
-      fi
-      show_hosts_messge_banner="true"
     fi
+    __printf_color "44" "Adding to /etc/hosts:                   $CONTAINER_HOSTNAME $HOST_LISTEN_ADDR"
+    if ! grep -sq " $CONTAINER_HOSTNAME" "/etc/hosts"; then
+      echo "$HOST_LISTEN_ADDR        $CONTAINER_HOSTNAME" | sudo tee -a "/etc/hosts" &>/dev/null
+    fi
+    show_hosts_messge_banner="true"
     if [ -n "$NGINX_VHOST_NAMES" ]; then
       NGINX_VHOST_NAMES="${NGINX_VHOST_NAMES//,/ }"
       for vhost in $NGINX_VHOST_NAMES; do
@@ -2067,9 +2138,13 @@ if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
     unset show_hosts_messge_banner
   fi
   printf_yellow "The container name is:                  $CONTAINER_NAME"
-  printf_yellow "The container is listening on:          $HOST_LISTEN_ADDR"
-  printf_yellow "The hostname name is set to:            $CONTAINER_HOSTNAME"
   printf_yellow "Containers data is saved in:            $DATADIR"
+  printf_yellow "The container is listening on:          $HOST_LISTEN_ADDR"
+  printf_yellow "The domain name is set to:              $CONTAINER_DOMAINNAME"
+  printf_yellow "The hostname name is set to:            $CONTAINER_HOSTNAME"
+  if [ -n "$HOST_NGINX_INTERNAL_DOMAIN" ]; then
+    printf_yellow "The internal name is set to:            $HOST_NGINX_INTERNAL_DOMAIN"
+  fi
   printf '# - - - - - - - - - - - - - - - - - - - - - - - - - -\n'
   if __ssl_certs; then
     mkdir -p "$CONTAINER_SSL_DIR"
