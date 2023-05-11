@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-##@Version           :  202305111740-git
+##@Version           :  202305111758-git
 # @@Author           :  Jason Hempstead
 # @@Contact          :  jason@casjaysdev.com
 # @@License          :  LICENSE.md
 # @@ReadME           :  install.sh --help
 # @@Copyright        :  Copyright: (c) 2023 Jason Hempstead, Casjays Developments
-# @@Created          :  Thursday, May 11, 2023 17:40 EDT
+# @@Created          :  Thursday, May 11, 2023 17:58 EDT
 # @@File             :  install.sh
 # @@Description      :  Container installer script for it-tools
 # @@Changelog        :  New script
@@ -27,7 +27,7 @@
 # shellcheck disable=SC2317
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 APPNAME="it-tools"
-VERSION="202305111740-git"
+VERSION="202305111758-git"
 REPO_BRANCH="${GIT_REPO_BRANCH:-main}"
 HOME="${USER_HOME:-$HOME}"
 USER="${SUDO_USER:-$USER}"
@@ -314,10 +314,10 @@ HOST_NGINX_HTTPS_PORT="443"
 HOST_NGINX_UPDATE_CONF="yes"
 HOST_NGINX_EXTERNAL_DOMAIN=""
 HOST_NGINX_INTERNAL_DOMAIN="home"
-HOST_NGINX_INTERNAL_HOST="it-tools"
+HOST_NGINX_INTERNAL_HOST="tools"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Enable this if container is running a webserver - [yes/no] [internalPort] [yes/no] [yes/no] [listen]
-CONTAINER_WEB_SERVER_ENABLED="yes"
+CONTAINER_WEB_SERVER_ENABLED="no"
 CONTAINER_WEB_SERVER_INT_PORT="80"
 CONTAINER_WEB_SERVER_SSL_ENABLED="no"
 CONTAINER_WEB_SERVER_AUTH_ENABLED="no"
@@ -1091,10 +1091,10 @@ fi
 # Setup containers hostname
 if __is_server && [ -z "$CONTAINER_HOSTNAME" ]; then
   CONTAINER_DOMAINNAME="$SET_HOST_FULL_DOMAIN"
-  CONTAINER_HOSTNAME="$APPNAME.$SET_HOST_FULL_DOMAIN"
+  CONTAINER_HOSTNAME="${CONTAINER_NAME:-$APPNAME}.$SET_HOST_FULL_DOMAIN"
 else
   CONTAINER_DOMAINNAME="${CONTAINER_DOMAINNAME:-$SET_HOST_FULL_DOMAIN}"
-  CONTAINER_HOSTNAME="${CONTAINER_HOSTNAME:-$APPNAME.$SET_HOST_FULL_NAME}"
+  CONTAINER_HOSTNAME="${CONTAINER_HOSTNAME:-${CONTAINER_NAME:-$APPNAME}}.$CONTAINER_DOMAINNAME"
 fi
 if [ -n "$CONTAINER_HOSTNAME" ]; then
   DOCKER_SET_OPTIONS+=("--hostname $CONTAINER_HOSTNAME")
