@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-##@Version           :  202305111907-git
+##@Version           :  202305111924-git
 # @@Author           :  Jason Hempstead
 # @@Contact          :  jason@casjaysdev.com
 # @@License          :  LICENSE.md
 # @@ReadME           :  install.sh --help
 # @@Copyright        :  Copyright: (c) 2023 Jason Hempstead, Casjays Developments
-# @@Created          :  Thursday, May 11, 2023 19:07 EDT
+# @@Created          :  Thursday, May 11, 2023 19:24 EDT
 # @@File             :  install.sh
 # @@Description      :  Container installer script for it-tools
 # @@Changelog        :  New script
@@ -27,7 +27,7 @@
 # shellcheck disable=SC2317
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 APPNAME="it-tools"
-VERSION="202305111907-git"
+VERSION="202305111924-git"
 REPO_BRANCH="${GIT_REPO_BRANCH:-main}"
 HOME="${USER_HOME:-$HOME}"
 USER="${SUDO_USER:-$USER}"
@@ -2067,9 +2067,10 @@ fi
 { [ "$NGINX_VHOST_NAMES" = "" ] || [ "$NGINX_VHOST_NAMES" = " " ]; } && unset NGINX_VHOST_NAMES
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Setup an internal host
+NGINX_VHOSTS_PROXY_INT_TMP="/tmp/$$.$HOST_NGINX_INTERNAL_HOST.$HOST_NGINX_INTERNAL_DOMAIN"
 if [ -n "$NGINX_SET_PROXY_ADDRESS" ] && [ -n "$HOST_NGINX_INTERNAL_DOMAIN" ]; then
   HOST_NGINX_INTERNAL_DOMAIN="$HOST_NGINX_INTERNAL_HOST.$HOST_NGINX_INTERNAL_DOMAIN"
-  cat <<EOF | tee "$NGINX_VHOSTS_PROXY_FILE_TMP" &>/dev/null
+  cat <<EOF | tee "$NGINX_VHOSTS_PROXY_INT_TMP" &>/dev/null
 server {
   listen                                    $HOST_NGINX_HTTP_PORT;
   listen                                    [::]:$HOST_NGINX_HTTP_PORT;
@@ -2100,12 +2101,13 @@ server {
 }
 
 EOF
-  if [ -f "$NGINX_VHOSTS_INC_FILE_TMP" ]; then
+  if [ -f "$NGINX_VHOSTS_PROXY_INT_TMP" ]; then
     if [ -f "/etc/nginx/nginx.conf" ]; then
-      __sudo_root mv -f "$NGINX_VHOSTS_INC_FILE_TMP" "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf"
+      [ -d "$NGINX_DIR/vhosts.d" ] || __sudo_root mkdir -p "$NGINX_DIR/vhosts.d"
+      __sudo_root mv -f "$NGINX_VHOSTS_PROXY_INT_TMP" "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf"
       systemctl status nginx 2>/dev/null | grep -q enabled &>/dev/null && __sudo_root systemctl reload nginx &>/dev/null
     else
-      mv -f "$NGINX_VHOSTS_CONF_FILE_TMP" "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf" &>/dev/null
+      mv -f "$NGINX_VHOSTS_PROXY_INT_TMP" "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf" &>/dev/null
     fi
   fi
   NGINX_VHOST_NAMES="$NGINX_VHOST_NAMES $HOST_NGINX_INTERNAL_DOMAIN"
