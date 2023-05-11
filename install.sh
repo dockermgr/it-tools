@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-##@Version           :  202305111809-git
+##@Version           :  202305111822-git
 # @@Author           :  Jason Hempstead
 # @@Contact          :  jason@casjaysdev.com
 # @@License          :  LICENSE.md
 # @@ReadME           :  install.sh --help
 # @@Copyright        :  Copyright: (c) 2023 Jason Hempstead, Casjays Developments
-# @@Created          :  Thursday, May 11, 2023 18:09 EDT
+# @@Created          :  Thursday, May 11, 2023 18:22 EDT
 # @@File             :  install.sh
 # @@Description      :  Container installer script for it-tools
 # @@Changelog        :  New script
@@ -27,7 +27,7 @@
 # shellcheck disable=SC2317
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 APPNAME="it-tools"
-VERSION="202305111809-git"
+VERSION="202305111822-git"
 REPO_BRANCH="${GIT_REPO_BRANCH:-main}"
 HOME="${USER_HOME:-$HOME}"
 USER="${SUDO_USER:-$USER}"
@@ -314,7 +314,7 @@ HOST_NGINX_HTTPS_PORT="443"
 HOST_NGINX_UPDATE_CONF="yes"
 HOST_NGINX_EXTERNAL_DOMAIN=""
 HOST_NGINX_INTERNAL_DOMAIN="home"
-HOST_NGINX_INTERNAL_HOST="it-tools"
+HOST_NGINX_INTERNAL_HOST=""
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Enable this if container is running a webserver - [yes/no] [internalPort] [yes/no] [yes/no] [listen]
 CONTAINER_WEB_SERVER_ENABLED="yes"
@@ -2098,10 +2098,11 @@ EOF
       __sudo_root mv -f "$NGINX_VHOSTS_INC_FILE_TMP" "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf"
       systemctl status nginx 2>/dev/null | grep -q enabled &>/dev/null && __sudo_root systemctl reload nginx &>/dev/null
     else
-      mv -f "$NGINX_VHOSTS_CONF_FILE_TMP" "$INSTDIR/nginx/$HOST_NGINX_INTERNAL_DOMAIN.conf" &>/dev/null
+      mv -f "$NGINX_VHOSTS_CONF_FILE_TMP" "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf" &>/dev/null
     fi
   fi
   NGINX_VHOST_NAMES="$NGINX_VHOST_NAMES $HOST_NGINX_INTERNAL_DOMAIN"
+  [ -f "$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf" ] && NGINX_INTERNAL_IS_SET="$NGINX_DIR/vhosts.d/$HOST_NGINX_INTERNAL_DOMAIN.conf"
 fi
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # finalize
@@ -2121,7 +2122,7 @@ if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
     if ! grep -sq " $CONTAINER_HOSTNAME" "/etc/hosts"; then
       echo "$HOST_LISTEN_ADDR        $CONTAINER_HOSTNAME" | sudo tee -a "/etc/hosts" &>/dev/null
     fi
-    show_hosts_messge_banner="true"
+    show_hosts_message_banner="true"
     if [ -n "$NGINX_VHOST_NAMES" ]; then
       NGINX_VHOST_NAMES="${NGINX_VHOST_NAMES//,/ }"
       for vhost in $NGINX_VHOST_NAMES; do
@@ -2132,10 +2133,10 @@ if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
           fi
         fi
       done
-      show_hosts_messge_banner="true"
+      show_hosts_message_banner="true"
     fi
-    [ "$show_hosts_messge_banner" = "true" ] && printf '# - - - - - - - - - - - - - - - - - - - - - - - - - -\n'
-    unset show_hosts_messge_banner
+    [ "$show_hosts_message_banner" = "true" ] && printf '# - - - - - - - - - - - - - - - - - - - - - - - - - -\n'
+    unset show_hosts_message_banner
   fi
   printf_yellow "The container name is:                  $CONTAINER_NAME"
   printf_yellow "Containers data is saved in:            $DATADIR"
@@ -2179,6 +2180,9 @@ if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
     fi
     if [ -f "$NGINX_VHOST_CONFIG" ]; then
       printf_cyan "nginx custom vhost file installed to:   $NGINX_VHOST_CONFIG"
+    fi
+    if [ -n "$NGINX_INTERNAL_IS_SET" ]; then
+      printf_cyan "nginx internal vhost file installed to: $NGINX_VHOST_CONFIG"
     fi
     printf '# - - - - - - - - - - - - - - - - - - - - - - - - - -\n'
   fi
