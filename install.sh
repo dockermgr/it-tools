@@ -112,7 +112,7 @@ __printf_spacing_color() { __printf_space "$1" "$2" "$3" "$4"; }
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 __cmd_exists() { type -p $1 &>/dev/null || return 1; }
 __remove_extra_spaces() { sed 's/\( \)*/\1/g;s|^ ||g'; }
-__ping_host() { ping -c1 -i1 -w1 "$1" 2>/dev/null 2>&1 || return 1; }
+__ping_host() { ping -c1 -i1 -w1 "$1" >/dev/null 2>&1 || return 1; }
 __port() { echo "$((50000 + $RANDOM % 1000))" | grep '^' || return 1; }
 __grep_char() { grep '[a-zA-Z0-9].[a-zA-Z0-9]' | grep '^' || return 1; }
 __docker_check() { [ -n "$(type -p docker 2>/dev/null)" ] || return 1; }
