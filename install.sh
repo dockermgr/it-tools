@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-##@Version           :  202409072243-git
+##@Version           :  202409081157-git
 # @@Author           :  Jason Hempstead
 # @@Contact          :  jason@casjaysdev.pro
 # @@License          :  LICENSE.md
 # @@ReadME           :  install.sh --help
 # @@Copyright        :  Copyright: (c) 2024 Jason Hempstead, Casjays Developments
-# @@Created          :  Saturday, Sep 07, 2024 22:43 EDT
+# @@Created          :  Sunday, Sep 08, 2024 11:57 EDT
 # @@File             :  install.sh
 # @@Description      :  Container installer script for it-tools
 # @@Changelog        :  New script
@@ -27,7 +27,7 @@
 # shellcheck disable=SC2317
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 APPNAME="it-tools"
-VERSION="202409072243-git"
+VERSION="202409081157-git"
 REPO_BRANCH="${GIT_REPO_BRANCH:-main}"
 USER="${SUDO_USER:-$USER}"
 RUN_USER="${RUN_USER:-$USER}"
@@ -110,8 +110,9 @@ __printf_space() {
 __printf_spacing_file() { __printf_space "$1" "7" "$2" "$3"; }
 __printf_spacing_color() { __printf_space "$1" "$2" "$3" "$4"; }
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-__cmd_exists() { type -P $1 &>/dev/null || return 1; }
+__cmd_exists() { type -p $1 &>/dev/null || return 1; }
 __remove_extra_spaces() { sed 's/\( \)*/\1/g;s|^ ||g'; }
+__ping_host() { ping -c1 -i1 -w1 "$1" 2>/dev/null 2>&1 || return 1; }
 __port() { echo "$((50000 + $RANDOM % 1000))" | grep '^' || return 1; }
 __grep_char() { grep '[a-zA-Z0-9].[a-zA-Z0-9]' | grep '^' || return 1; }
 __docker_check() { [ -n "$(type -p docker 2>/dev/null)" ] || return 1; }
@@ -132,6 +133,7 @@ __domain_name() { hostname -d 2>/dev/null | grep -F '.' | grep '^' || hostname -
 __netstat() { netstat -taupln 2>/dev/null | grep -vE 'WAIT|ESTABLISHED|docker-pro' | awk -F ' ' '{print $4}' | sed 's|.*:||g' | grep -E '[0-9]' | sort -Vu | grep "^${1:-.*}$" || return 1; }
 __retrieve_custom_env() { [ -f "$DOCKERMGR_CONFIG_DIR/env/$APPNAME.${1:-custom}.conf" ] && cat "$DOCKERMGR_CONFIG_DIR/env/$APPNAME.${1:-custom}.conf" | grep -Ev '^$|^#' | grep '=' | grep '^' || __custom_docker_env | grep -Ev '^$|^#' | grep '=' | grep '^' || return 1; }
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+__get_records() { __cmd_exists dig && dig casjay.pro 2>&1 | grep -E 'A|AAAA|CNAME' | grep -E '[0-9]\.|[0-9]:' | awk '{print $NF}' | head -n1 | grep '^' || return 1; }
 __docker_gateway_ip() { sudo docker network inspect -f '{{json .IPAM.Config}}' ${HOST_DOCKER_NETWORK:-bridge} 2>/dev/null | jq -r '.[].Gateway' | grep -Ev '^$|null' | head -n1 | grep '^' || return 1; }
 __docker_net_create() { __docker_net_ls | grep -q "$HOST_DOCKER_NETWORK" && return 0 || { docker network create -d bridge --attachable $HOST_DOCKER_NETWORK &>/dev/null && __docker_net_ls | grep -q "$HOST_DOCKER_NETWORK" && echo "$HOST_DOCKER_NETWORK" && return 0 || return 1; }; }
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -215,7 +217,7 @@ ENV_DOMAINNAME="${ENV_DOMAINNAME:-$SET_DOMAIN}"
 SET_LOCAL_HOSTNAME=$(__host_name)
 SET_LONG_HOSTNAME=$(hostname -f 2>/dev/null | grep '^')
 SET_SHORT_HOSTNAME=$(hostname -s 2>/dev/null | grep '^')
-SET_DOMAIN_NAME=$(__domain_name || echo 'home')
+SET_DOMAIN_NAME=$(__domain_name || hostname -f | grep '^' || echo 'home')
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Set hostname and domain
 SET_HOST_FULL_NAME="${FULL_HOST:-$SET_LONG_HOSTNAME}"
@@ -382,7 +384,7 @@ CONTAINER_WEB_SERVER_INT_PATH="/"
 CONTAINER_WEB_SERVER_EXT_PATH="/"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Specify custom nginx vhosts - autoconfigure: [all.name/name.all/name.mydomain/name.myhost] - [virtualhost,othervhostdom]
-CONTAINER_WEB_SERVER_VHOSTS="tools.all"
+CONTAINER_WEB_SERVER_VHOSTS=""
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Add random portmapping - [port,otherport] or [proxy|/location|port]
 CONTAINER_ADD_RANDOM_PORTS=""
@@ -1272,10 +1274,18 @@ fi
 if __is_server && [ -z "$CONTAINER_HOSTNAME" ]; then
   CONTAINER_DOMAINNAME="$SET_HOST_FULL_DOMAIN"
 else
-  CONTAINER_DOMAINNAME="${CONTAINER_DOMAINNAME:-$SET_HOST_FULL_DOMAIN}"
+  CONTAINER_DOMAINNAME="$HOSTNAME"
 fi
-CONTAINER_HOSTNAME="${CONTAINER_HOSTNAME:-${APPNAME:-it-tools}}"
+CONTAINER_HOSTNAME="${CONTAINER_HOSTNAME:-$APPNAME}"
+if __ping_host $CONTAINER_HOSTNAME.$CONTAINER_DOMAINNAME; then
+  CONTAINER_HOSTNAME="$CONTAINER_HOSTNAME.$CONTAINER_DOMAINNAME"
+elif __ping_host ${CONTAINER_DOMAINNAME:-$SET_HOST_FULL_DOMAIN}; then
+  CONTAINER_HOSTNAME="${CONTAINER_DOMAINNAME:-$SET_HOST_FULL_DOMAIN}"
+else
+  CONTAINER_HOSTNAME="$APPNAME.$HOSTNAME"
+fi
 echo "$CONTAINER_HOSTNAME" | grep -q "$CONTAINER_DOMAINNAME" || CONTAINER_HOSTNAME="$CONTAINER_HOSTNAME.$CONTAINER_DOMAINNAME"
+__ping_host '1.1.1.1' && [ "$(__get_records)" = "$(__public_ip)" ] || CONTAINER_HOSTNAME="$APPNAME.$HOSTNAME"
 if [ -n "$CONTAINER_HOSTNAME" ]; then
   DOCKER_SET_OPTIONS+=("--hostname $CONTAINER_HOSTNAME")
   DOCKER_SET_OPTIONS+=("--env HOSTNAME=$CONTAINER_HOSTNAME")
@@ -2539,7 +2549,6 @@ if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
   else
     for create_service in $SET_PORT; do
       if [ "$create_service" != "--publish" ] && [ "$create_service" != " " ]; then
-        unset type
         if [ "$set_listen_on_all" = "yes" ]; then
           for custom_port in $set_listen_port; do
             set_custom_port="$(echo "$custom_port" | awk -F ':' '{print $2}' | grep '^' || echo "${custom_port//*:/}")"
@@ -2547,10 +2556,9 @@ if [ "$CONTAINER_INSTALLED" = "true" ] || __docker_ps_all -q; then
             __printf_spacing_color "6" "40" "Port $set_custom_service is mapped to:" "$set_custom_port"
           done
           create_service="${create_service//$custom_port/} "
-          unset set_custom_service set_custom_port
         fi
         service="$create_service"
-        if [ -n "$service" ]; then
+        if [ -n "$service" ] && [ "$service" != " " ]; then
           if echo "$service" | grep -q ":.*.:"; then
             set_host="$(echo "$service" | awk -F ':' '{print $1}')"
             set_port="$(echo "$service" | awk -F ':' '{print $3}')"
